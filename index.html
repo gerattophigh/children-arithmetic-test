@@ -183,7 +183,7 @@
 
     .setting-grid {
       display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
+      grid-template-columns: repeat(3, minmax(0, 1fr));
       gap: 20px;
     }
 
@@ -488,6 +488,71 @@
       font-weight: 900;
     }
 
+
+    .history-entry {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      margin-top: 20px;
+      padding: 17px 19px;
+      border: 1px solid #bae6fd;
+      border-radius: 20px;
+      background: #f0f9ff;
+    }
+
+    .history-entry strong { color: #0369a1; }
+    .history-entry span { display: block; margin-top: 3px; color: var(--muted); font-size: 13px; }
+
+    .history-entry-btn {
+      flex: 0 0 auto;
+      padding: 11px 14px;
+      border-radius: 14px;
+      color: #fff;
+      background: linear-gradient(135deg, #0ea5e9, #0284c7);
+      font-weight: 900;
+    }
+
+    .history-list {
+      display: grid;
+      gap: 12px;
+      margin-top: 20px;
+    }
+
+    .history-item {
+      display: grid;
+      grid-template-columns: minmax(180px, 1.3fr) repeat(3, minmax(90px, 0.7fr));
+      align-items: center;
+      gap: 12px;
+      padding: 17px;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: #fff;
+    }
+
+    .history-main strong { display: block; font-size: 16px; }
+    .history-main span { display: block; margin-top: 5px; color: var(--muted); font-size: 13px; }
+
+    .history-stat {
+      text-align: center;
+      padding: 8px;
+      border-radius: 13px;
+      background: #f7f5ef;
+    }
+
+    .history-stat strong { display: block; font-size: 18px; }
+    .history-stat span { color: var(--muted); font-size: 12px; }
+
+    .history-score strong { color: var(--success); font-size: 23px; }
+
+    .history-empty {
+      padding: 34px 20px;
+      border-radius: 20px;
+      background: #f7f5ef;
+      color: var(--muted);
+      text-align: center;
+      line-height: 1.8;
+    }
 
     .multiplication-entry {
       display: grid;
@@ -814,6 +879,10 @@
       .nav-btn.next { grid-column: 1 / -1; grid-row: 1; }
       .score-board { grid-template-columns: 1fr; }
       .analysis-grid { grid-template-columns: 1fr; }
+      .history-entry { align-items: flex-start; flex-direction: column; }
+      .history-entry-btn { width: 100%; }
+      .history-item { grid-template-columns: 1fr 1fr; }
+      .history-main { grid-column: 1 / -1; }
       .multiplication-entry { grid-template-columns: 1fr; }
       .multiplication-entry-btn { width: 100%; }
       .multiplication-picker { grid-template-columns: repeat(3, minmax(0, 1fr)); }
@@ -852,7 +921,7 @@
 
     <section id="setupScreen" class="card">
       <h2 class="setup-title">准备好了吗？</h2>
-      <p class="setup-desc">先选题型和数字范围。点击开始后会随机生成 100 道题，减法不会出现负数。</p>
+      <p class="setup-desc">先选题型、数字范围和题目数量。减法不会出现负数。</p>
 
       <div class="setting-grid">
         <div class="setting-group">
@@ -869,6 +938,15 @@
           <div class="segmented two" data-setting="range">
             <button class="choice-btn active" data-value="10">10 以内</button>
             <button class="choice-btn" data-value="100">100 以内</button>
+          </div>
+        </div>
+
+        <div class="setting-group">
+          <h3>③ 选择题数</h3>
+          <div class="segmented" data-setting="questionCount">
+            <button class="choice-btn" data-value="20">20 题</button>
+            <button class="choice-btn" data-value="50">50 题</button>
+            <button class="choice-btn active" data-value="100">100 题</button>
           </div>
         </div>
       </div>
@@ -907,7 +985,26 @@
         <button id="resetProfileBtn" class="reset-profile-btn" type="button">清除记录</button>
       </div>
 
+      <div class="history-entry">
+        <div>
+          <strong>📊 做题记录</strong>
+          <span id="historyEntryText">还没有完成过测试</span>
+        </div>
+        <button id="openHistoryBtn" class="history-entry-btn" type="button">查看做题记录</button>
+      </div>
+
       <button id="startBtn" class="start-btn">开始答题</button>
+    </section>
+
+    <section id="historyScreen" class="card hidden">
+      <div class="multiplication-head">
+        <div>
+          <h2>做题记录</h2>
+          <p>可以查看孩子每次完成测试的时间、用时和成绩。</p>
+        </div>
+        <button id="historyHomeBtn" class="small-home-btn" type="button">← 返回首页</button>
+      </div>
+      <div id="historyList" class="history-list"></div>
     </section>
 
     <section id="multiplicationScreen" class="card hidden">
@@ -1032,6 +1129,8 @@
       const DEFAULT_QUESTION_COUNT = 100;
       const SPECIAL_PRACTICE_REPEATS = 2;
       const STORAGE_KEY = "childrenArithmeticAdaptiveProfileV1";
+      const HISTORY_STORAGE_KEY = "childrenArithmeticQuizHistoryV1";
+      const MAX_HISTORY_ITEMS = 100;
       const optionLetters = ["A", "B", "C", "D"];
 
       const state = {
@@ -1039,6 +1138,7 @@
         range: 10,
         mode: "adaptive",
         multiplicationBase: 5,
+        selectedQuestionCount: DEFAULT_QUESTION_COUNT,
         totalQuestions: DEFAULT_QUESTION_COUNT,
         questions: [],
         currentIndex: 0,
@@ -1056,9 +1156,11 @@
       };
 
       let persistentProfile = loadProfile();
+      let quizHistory = loadQuizHistory();
 
       const els = {
         setupScreen: document.getElementById("setupScreen"),
+        historyScreen: document.getElementById("historyScreen"),
         multiplicationScreen: document.getElementById("multiplicationScreen"),
         quizScreen: document.getElementById("quizScreen"),
         resultScreen: document.getElementById("resultScreen"),
@@ -1070,6 +1172,10 @@
         pauseOverlay: document.getElementById("pauseOverlay"),
         resumeBtn: document.getElementById("resumeBtn"),
         startBtn: document.getElementById("startBtn"),
+        openHistoryBtn: document.getElementById("openHistoryBtn"),
+        historyHomeBtn: document.getElementById("historyHomeBtn"),
+        historyEntryText: document.getElementById("historyEntryText"),
+        historyList: document.getElementById("historyList"),
         startPracticeBtn: document.getElementById("startPracticeBtn"),
         openMultiplicationBtn: document.getElementById("openMultiplicationBtn"),
         multiplicationHomeBtn: document.getElementById("multiplicationHomeBtn"),
@@ -1133,6 +1239,100 @@
 
       function operationLabel(operation) {
         return operation === "add" ? "加法" : operation === "subtract" ? "减法" : "加减混合";
+      }
+
+      function loadQuizHistory() {
+        try {
+          const raw = window.localStorage.getItem(HISTORY_STORAGE_KEY);
+          if (!raw) return [];
+          const parsed = JSON.parse(raw);
+          return Array.isArray(parsed) ? parsed.slice(0, MAX_HISTORY_ITEMS) : [];
+        } catch (error) {
+          return [];
+        }
+      }
+
+      function saveQuizHistory() {
+        try {
+          window.localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(quizHistory));
+        } catch (error) {
+          // 无法写入本地存储时，不影响当前测试和评分。
+        }
+      }
+
+      function historyModeLabel(record) {
+        if (record.mode === "special") return "错题集专项练习";
+        if (record.mode === "multiplication") return `${record.multiplicationBase} 的乘法口诀`;
+        return `${operationLabel(record.operation)} · ${record.range}以内`;
+      }
+
+      function formatHistoryDate(timestamp) {
+        return new Date(timestamp).toLocaleString("zh-CN", {
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+          hour: "2-digit",
+          minute: "2-digit",
+          second: "2-digit",
+          hour12: false
+        });
+      }
+
+      function updateHistoryEntryText() {
+        if (!els.historyEntryText) return;
+        els.historyEntryText.textContent = quizHistory.length > 0
+          ? `已保存 ${quizHistory.length} 次测试 · 最近：${formatHistoryDate(quizHistory[0].completedAt)}`
+          : "还没有完成过测试";
+      }
+
+      function renderQuizHistory() {
+        if (quizHistory.length === 0) {
+          els.historyList.innerHTML = `
+            <div class="history-empty">
+              还没有做题记录。<br />
+              完成一次测试并交卷后，时间、用时和成绩会自动出现在这里。
+            </div>
+          `;
+          return;
+        }
+
+        els.historyList.innerHTML = quizHistory.map((record) => `
+          <article class="history-item">
+            <div class="history-main">
+              <strong>${historyModeLabel(record)}</strong>
+              <span>${formatHistoryDate(record.completedAt)} · ${record.questionCount} 题</span>
+            </div>
+            <div class="history-stat">
+              <strong>${formatTime(record.elapsedSeconds)}</strong>
+              <span>完成用时</span>
+            </div>
+            <div class="history-stat">
+              <strong>${record.correctCount} / ${record.questionCount}</strong>
+              <span>答对题数</span>
+            </div>
+            <div class="history-stat history-score">
+              <strong>${record.score}</strong>
+              <span>成绩</span>
+            </div>
+          </article>
+        `).join("");
+      }
+
+      function addQuizHistory(correctCount, score) {
+        quizHistory.unshift({
+          completedAt: Date.now(),
+          mode: state.mode,
+          operation: state.operation,
+          range: state.range,
+          multiplicationBase: state.multiplicationBase,
+          questionCount: state.totalQuestions,
+          elapsedSeconds: state.elapsedSeconds,
+          correctCount,
+          score
+        });
+        quizHistory = quizHistory.slice(0, MAX_HISTORY_ITEMS);
+        saveQuizHistory();
+        updateHistoryEntryText();
       }
 
       function loadProfile() {
@@ -1578,6 +1778,7 @@
 
       function showScreen(screen) {
         els.setupScreen.classList.add("hidden");
+        els.historyScreen.classList.add("hidden");
         els.multiplicationScreen.classList.add("hidden");
         els.quizScreen.classList.add("hidden");
         els.resultScreen.classList.add("hidden");
@@ -1597,6 +1798,7 @@
         els.timer.textContent = "00:00";
         showScreen(els.setupScreen);
         updateProfileText();
+        updateHistoryEntryText();
       }
 
       function recordFirstResponse(answer) {
@@ -1854,6 +2056,7 @@
         buildLearningAnalysis();
 
         const score = Math.round((correctCount / state.totalQuestions) * 100);
+        addQuizHistory(correctCount, score);
         els.resultTitle.textContent = state.mode === "special"
           ? "专项练习完成！"
           : state.mode === "multiplication"
@@ -1902,6 +2105,8 @@
             state.operation = button.dataset.value;
           } else if (group.dataset.setting === "range") {
             state.range = Number(button.dataset.value);
+          } else if (group.dataset.setting === "questionCount") {
+            state.selectedQuestionCount = Number(button.dataset.value);
           }
         });
       });
@@ -1917,7 +2122,7 @@
           state.totalQuestions = state.questions.length;
           els.rangeText.textContent = `${state.multiplicationBase} 的乘法口诀 · ${state.totalQuestions} 题`;
         } else {
-          els.rangeText.textContent = `${operationLabel(state.operation)} · ${state.range}以内 · 智能出题`;
+          els.rangeText.textContent = `${operationLabel(state.operation)} · ${state.range}以内 · ${state.totalQuestions} 题 · 智能出题`;
         }
         showScreen(els.quizScreen);
         els.quizControls.classList.remove("hidden");
@@ -1927,7 +2132,7 @@
 
       els.startBtn.addEventListener("click", () => {
         state.mode = "adaptive";
-        state.totalQuestions = DEFAULT_QUESTION_COUNT;
+        state.totalQuestions = state.selectedQuestionCount;
         launchQuiz();
       });
 
@@ -1938,6 +2143,13 @@
         state.totalQuestions = 12 * SPECIAL_PRACTICE_REPEATS;
         launchQuiz();
       });
+
+      els.openHistoryBtn.addEventListener("click", () => {
+        renderQuizHistory();
+        showScreen(els.historyScreen);
+      });
+
+      els.historyHomeBtn.addEventListener("click", returnToHome);
 
       els.openMultiplicationBtn.addEventListener("click", () => {
         renderMultiplicationTable();
@@ -2038,6 +2250,7 @@
       });
 
       updateProfileText();
+      updateHistoryEntryText();
     })();
   </script>
 
