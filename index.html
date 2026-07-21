@@ -489,6 +489,48 @@
     }
 
 
+    .practice-card {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      align-items: center;
+      gap: 18px;
+      margin-top: 20px;
+      padding: 20px;
+      border: 1px solid #fed7aa;
+      border-radius: 22px;
+      background: linear-gradient(135deg, #fff8ed, #fffdf7);
+    }
+
+    .practice-card h3 { margin: 0 0 7px; font-size: 20px; }
+    .practice-card p { margin: 0; color: var(--muted); line-height: 1.7; }
+
+    .practice-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 7px;
+      margin-top: 12px;
+    }
+
+    .practice-tag {
+      padding: 5px 9px;
+      border-radius: 999px;
+      background: #fff;
+      color: #9a5b17;
+      border: 1px solid #fed7aa;
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    .practice-btn {
+      min-width: 180px;
+      padding: 15px 18px;
+      border-radius: 16px;
+      color: #fff;
+      background: linear-gradient(135deg, #f59e0b, #ea580c);
+      font-weight: 900;
+      box-shadow: 0 10px 22px rgba(234, 88, 12, 0.2);
+    }
+
     .adaptive-note {
       display: flex;
       align-items: center;
@@ -650,6 +692,8 @@
       .nav-btn.next { grid-column: 1 / -1; grid-row: 1; }
       .score-board { grid-template-columns: 1fr; }
       .analysis-grid { grid-template-columns: 1fr; }
+      .practice-card { grid-template-columns: 1fr; }
+      .practice-btn { width: 100%; }
       .adaptive-note { align-items: flex-start; }
       .wrong-item { grid-template-columns: 1fr; gap: 5px; }
       .wrong-answer { text-align: left; }
@@ -702,6 +746,19 @@
         </div>
       </div>
 
+
+      <section class="practice-card" aria-labelledby="practiceTitle">
+        <div>
+          <h3 id="practiceTitle">🎯 错题集 / 专项练习</h3>
+          <p>集中练习“小数 + 大数 = 6、7、8、9”，默认覆盖 12 种组合，每种练两遍。</p>
+          <div class="practice-tags" aria-label="专项练习范围">
+            <span class="practice-tag">和为 6–9</span>
+            <span class="practice-tag">12 种组合</span>
+            <span class="practice-tag">共 24 题</span>
+          </div>
+        </div>
+        <button id="startPracticeBtn" class="practice-btn" type="button">直接开始错题集</button>
+      </section>
 
       <div class="adaptive-note">
         <div>
@@ -770,7 +827,7 @@
     </section>
 
     <section id="resultScreen" class="card hidden">
-      <h2 class="result-title">测试完成！</h2>
+      <h2 id="resultTitle" class="result-title">测试完成！</h2>
       <p id="resultDesc" class="result-desc">这次表现不错，下面是你的成绩。</p>
 
       <div class="score-board">
@@ -806,18 +863,21 @@
     (() => {
       "use strict";
 
-      const TOTAL_QUESTIONS = 100;
+      const DEFAULT_QUESTION_COUNT = 100;
+      const SPECIAL_PRACTICE_REPEATS = 2;
       const STORAGE_KEY = "childrenArithmeticAdaptiveProfileV1";
       const optionLetters = ["A", "B", "C", "D"];
 
       const state = {
         operation: "mixed",
         range: 10,
+        mode: "adaptive",
+        totalQuestions: DEFAULT_QUESTION_COUNT,
         questions: [],
         currentIndex: 0,
-        answers: Array(TOTAL_QUESTIONS).fill(null),
-        responseRecords: Array(TOTAL_QUESTIONS).fill(null),
-        questionTiming: Array.from({ length: TOTAL_QUESTIONS }, () => ({ elapsedMs: 0, activeStart: null })),
+        answers: Array(DEFAULT_QUESTION_COUNT).fill(null),
+        responseRecords: Array(DEFAULT_QUESTION_COUNT).fill(null),
+        questionTiming: Array.from({ length: DEFAULT_QUESTION_COUNT }, () => ({ elapsedMs: 0, activeStart: null })),
         sessionStats: {},
         recentQuestionKeys: [],
         startedAt: null,
@@ -842,6 +902,7 @@
         pauseOverlay: document.getElementById("pauseOverlay"),
         resumeBtn: document.getElementById("resumeBtn"),
         startBtn: document.getElementById("startBtn"),
+        startPracticeBtn: document.getElementById("startPracticeBtn"),
         profileText: document.getElementById("profileText"),
         resetProfileBtn: document.getElementById("resetProfileBtn"),
         answeredText: document.getElementById("answeredText"),
@@ -858,6 +919,7 @@
         submitPanel: document.getElementById("submitPanel"),
         submitHint: document.getElementById("submitHint"),
         submitBtn: document.getElementById("submitBtn"),
+        resultTitle: document.getElementById("resultTitle"),
         resultDesc: document.getElementById("resultDesc"),
         scoreValue: document.getElementById("scoreValue"),
         correctValue: document.getElementById("correctValue"),
@@ -1009,6 +1071,35 @@
           options: generateOptions(answer, maxRange),
           text: `${a} ${symbol} ${b}`
         };
+      }
+
+      function generateSpecialPracticeQuestions() {
+        const baseQuestions = [];
+
+        for (let sum = 6; sum <= 9; sum += 1) {
+          for (let small = 1; small < sum - small; small += 1) {
+            const large = sum - small;
+            baseQuestions.push({
+              operation: "add",
+              a: small,
+              b: large,
+              symbol: "+",
+              answer: sum,
+              text: `${small} + ${large}`
+            });
+          }
+        }
+
+        const questions = [];
+        for (let repeat = 0; repeat < SPECIAL_PRACTICE_REPEATS; repeat += 1) {
+          shuffle(baseQuestions).forEach((question) => {
+            questions.push({
+              ...question,
+              options: generateOptions(question.answer, 10)
+            });
+          });
+        }
+        return shuffle(questions);
       }
 
       function skillPrefix(question) {
@@ -1170,8 +1261,8 @@
       }
 
       function ensureQuestion(index) {
-        while (state.questions.length <= index && state.questions.length < TOTAL_QUESTIONS) {
-          state.questions.push(selectAdaptiveQuestion());
+        while (state.questions.length <= index && state.questions.length < state.totalQuestions) {
+          state.questions.push(state.mode === "special" ? generateSpecialPracticeQuestions()[0] : selectAdaptiveQuestion());
         }
         return state.questions[index];
       }
@@ -1242,9 +1333,9 @@
         stopTimer();
         state.questions = [];
         state.currentIndex = 0;
-        state.answers = Array(TOTAL_QUESTIONS).fill(null);
-        state.responseRecords = Array(TOTAL_QUESTIONS).fill(null);
-        state.questionTiming = Array.from({ length: TOTAL_QUESTIONS }, () => ({ elapsedMs: 0, activeStart: null }));
+        state.answers = Array(state.totalQuestions).fill(null);
+        state.responseRecords = Array(state.totalQuestions).fill(null);
+        state.questionTiming = Array.from({ length: state.totalQuestions }, () => ({ elapsedMs: 0, activeStart: null }));
         state.sessionStats = {};
         state.recentQuestionKeys = [];
         state.startedAt = null;
@@ -1330,15 +1421,15 @@
 
       function updateProgress() {
         const answeredCount = state.answers.filter((answer) => answer !== null).length;
-        const progress = (answeredCount / TOTAL_QUESTIONS) * 100;
-        els.answeredText.textContent = `已完成 ${answeredCount} / ${TOTAL_QUESTIONS}`;
+        const progress = (answeredCount / state.totalQuestions) * 100;
+        els.answeredText.textContent = `已完成 ${answeredCount} / ${state.totalQuestions}`;
         els.progressBar.style.width = `${progress}%`;
 
-        if (answeredCount === TOTAL_QUESTIONS) {
-          els.submitHint.textContent = "100 道题全部完成，可以交卷啦！";
+        if (answeredCount === state.totalQuestions) {
+          els.submitHint.textContent = `${state.totalQuestions} 道题全部完成，可以交卷啦！`;
           els.submitPanel.classList.remove("hidden");
-        } else if (state.currentIndex === TOTAL_QUESTIONS - 1) {
-          const missing = TOTAL_QUESTIONS - answeredCount;
+        } else if (state.currentIndex === state.totalQuestions - 1) {
+          const missing = state.totalQuestions - answeredCount;
           els.submitHint.textContent = `还有 ${missing} 道题没有作答，也可以先提交。`;
           els.submitPanel.classList.remove("hidden");
         } else {
@@ -1364,7 +1455,7 @@
         });
 
         els.prevBtn.disabled = state.currentIndex === 0;
-        els.nextBtn.textContent = state.currentIndex === TOTAL_QUESTIONS - 1 ? "回到未答题" : "下一题";
+        els.nextBtn.textContent = state.currentIndex === state.totalQuestions - 1 ? "回到未答题" : "下一题";
         els.statusNote.textContent = "点选答案会自动进入下一题；输入答案后按 Enter";
         renderCurrentAnswer();
         updateProgress();
@@ -1373,7 +1464,7 @@
 
       function goToQuestion(index, options = {}) {
         if (state.isPaused || state.submitted || state.transitioning) return;
-        if (index < 0 || index >= TOTAL_QUESTIONS) return;
+        if (index < 0 || index >= state.totalQuestions) return;
         pauseCurrentQuestionTiming();
         state.currentIndex = index;
         renderQuestion();
@@ -1398,7 +1489,7 @@
           recordFirstResponse(answer);
         }
 
-        if (state.currentIndex < TOTAL_QUESTIONS - 1) {
+        if (state.currentIndex < state.totalQuestions - 1) {
           goToQuestion(state.currentIndex + 1, options);
           return;
         }
@@ -1414,11 +1505,11 @@
       }
 
       function scoreMessage(score) {
-        if (score === 100) return "满分！太厉害了，100 道题全部答对。";
+        if (score === 100) return "满分！太厉害了，这组题全部答对。";
         if (score >= 90) return "非常棒！只差一点点就是满分。";
         if (score >= 80) return "做得很好，错题再看一遍就更稳了。";
         if (score >= 60) return "已经完成挑战，认真看看错题，下次会进步。";
-        return "100 道题能坚持做完就很不容易，先从错题里找规律。";
+        return "能坚持做完这组题就很不容易，先从错题里找规律。";
       }
 
       function commitSessionLearning() {
@@ -1502,7 +1593,7 @@
         if (state.submitted) return;
 
         pauseCurrentQuestionTiming();
-        for (let index = 0; index < TOTAL_QUESTIONS; index += 1) ensureQuestion(index);
+        for (let index = 0; index < state.totalQuestions; index += 1) ensureQuestion(index);
 
         const unanswered = state.answers.filter((answer) => answer === null).length;
         if (unanswered > 0) {
@@ -1534,7 +1625,8 @@
         commitSessionLearning();
         buildLearningAnalysis();
 
-        const score = correctCount;
+        const score = Math.round((correctCount / state.totalQuestions) * 100);
+        els.resultTitle.textContent = state.mode === "special" ? "专项练习完成！" : "测试完成！";
         els.scoreValue.textContent = String(score);
         els.correctValue.textContent = String(correctCount);
         els.timeValue.textContent = formatTime(state.elapsedSeconds);
@@ -1582,23 +1674,40 @@
         });
       });
 
-      els.startBtn.addEventListener("click", () => {
+      function launchQuiz() {
         resetState();
-        els.rangeText.textContent = `${operationLabel(state.operation)} · ${state.range}以内 · 智能出题`;
+        if (state.mode === "special") {
+          state.questions = generateSpecialPracticeQuestions();
+          state.totalQuestions = state.questions.length;
+          els.rangeText.textContent = `错题集 · 小数 + 大数 · 和为 6–9 · ${state.totalQuestions} 题`;
+        } else {
+          els.rangeText.textContent = `${operationLabel(state.operation)} · ${state.range}以内 · 智能出题`;
+        }
         showScreen(els.quizScreen);
         els.quizControls.classList.remove("hidden");
         renderQuestion();
         startTimer();
+      }
+
+      els.startBtn.addEventListener("click", () => {
+        state.mode = "adaptive";
+        state.totalQuestions = DEFAULT_QUESTION_COUNT;
+        launchQuiz();
+      });
+
+      els.startPracticeBtn.addEventListener("click", () => {
+        state.mode = "special";
+        state.operation = "add";
+        state.range = 10;
+        state.totalQuestions = 12 * SPECIAL_PRACTICE_REPEATS;
+        launchQuiz();
       });
 
       els.pauseBtn.addEventListener("click", () => setPaused(!state.isPaused));
       els.resumeBtn.addEventListener("click", () => setPaused(false));
       els.homeBtn.addEventListener("click", returnToHome);
       els.restartBtn.addEventListener("click", () => {
-        resetState();
-        els.rangeText.textContent = `${operationLabel(state.operation)} · ${state.range}以内 · 智能出题`;
-        renderQuestion();
-        startTimer();
+        launchQuiz();
 
         els.restartBtn.textContent = "✓ 已重开";
         els.statusNote.textContent = "本组答案和计时已清空，已学习的历史记录仍然保留。";
@@ -1644,14 +1753,7 @@
       });
       els.submitBtn.addEventListener("click", submitQuiz);
 
-      els.retryBtn.addEventListener("click", () => {
-        resetState();
-        els.rangeText.textContent = `${operationLabel(state.operation)} · ${state.range}以内 · 智能出题`;
-        showScreen(els.quizScreen);
-        els.quizControls.classList.remove("hidden");
-        renderQuestion();
-        startTimer();
-      });
+      els.retryBtn.addEventListener("click", launchQuiz);
 
       els.backSetupBtn.addEventListener("click", returnToHome);
 
